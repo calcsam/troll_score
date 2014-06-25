@@ -4,11 +4,13 @@ import urllib2
 import itertools
 import csv
 from operator import itemgetter
+import datetime
 
 weekSeconds = 604800
-replyWindow = 86400 # one day
+replyWindow = 86400 # one day -- commenter must respond to OP in < this time
 startTime = 1396138355 # rnadom()
 measurementInterval = 1000 # seconds, about 20m
+timeDisplayFormat = '%Y-%m-%d %H:%M:%S'
 
 item_URL = "https://hn.algolia.com/api/v1/items/"
 #print json.load(urllib2.urlopen(item_URL+"1000"))
@@ -18,6 +20,17 @@ def author_comments_URL(author, start, end):
 	return "https://hn.algolia.com/api/v1/search_by_date?tags=comment,author_" + author \
 		 + "&numericFilters=created_at_i>" + str(start) + ",created_at_i<" + str(end) \
 		 + "&hitsPerPage=1"
+
+def generate_header():
+	return 	[
+				['Query run at', datetime.datetime.now().strftime(timeDisplayFormat)],
+				['Reply Window (secs)', replyWindow],
+				['Start Time', datetime.datetime.fromtimestamp(startTime).strftime(timeDisplayFormat)],
+				['End Time', datetime.datetime.fromtimestamp(startTime + measurementInterval).strftime(timeDisplayFormat)],
+				[''],
+				['Responder Subsequent Week Comments', 'Responder Prior Week Comments', 'Differential', 'Comment Text', 'Response Text']
+			]
+
 
 def condense_comment(comment_data, important_details):
 	return {variable: comment_data[variable] for variable in important_details}
@@ -53,7 +66,7 @@ def get_authors_of_comments():
 				original_comment['original_prior_week_comments'] = num_comments(original_comment['author'], original_comment['created_at_i'] - weekSeconds, original_comment['created_at_i']) 
 				original_comment['original_subsequent_week_comments'] =  num_comments(original_comment['author'], first_child['created_at_i'], first_child['created_at_i'] + weekSeconds)
 				original_comment['responder_text'] = first_child['text']
-				original_comment['differential'] = original_comment['responder_subsequent_week_comments'] - original_comment['responder_prior_week_comments']
+				original_comment['differential'] = original_comment['original_subsequent_week_comments'] - original_comment['original_prior_week_comments']
 			else:
 				original_comment['differential'] = 0
 		else:
@@ -61,11 +74,11 @@ def get_authors_of_comments():
 	sorted_comments = sorted(relevant_comments, key=itemgetter('differential'))
 	with open('comments.csv', 'w') as f:
 		writer = csv.writer(f, delimiter=',', quotechar='"')
-		header = ['Responder Subsequent Week Comments', 'Responder Prior Week Comments', 'Differential', 'Comment Text', 'Response Text']
-		writer.writerow(header)
+		for header_row in generate_header():
+			writer.writerow(header_row)
 		for entry in sorted_comments:
-			row = [entry.get('responder_subsequent_week_comments',0), 
-				entry.get('responder_prior_week_comments', 0), 
+			row = [entry.get('original_subsequent_week_comments',0), 
+				entry.get('original_prior_week_comments', 0), 
 				entry.get('differential', 0), 
 				entry.get('comment_text','').encode('utf-8'),
 				entry.get('responder_text','').encode('utf-8')]
